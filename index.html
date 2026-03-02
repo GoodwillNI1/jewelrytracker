@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Jewelry Tracker</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        .status-bar { font-size: 11px; text-align: center; color: #666; margin-bottom: 15px; padding: 5px; background: #f8f9fa; border-radius: 20px; border: 1px solid #eee; }
+        h2 { text-align: center; color: #1a202c; margin-top: 0; }
+        label { display: block; margin-top: 15px; font-weight: bold; font-size: 14px; color: #4a5568; }
+        select, input, button { width: 100%; padding: 14px; margin-top: 8px; border-radius: 10px; border: 1px solid #cbd5e0; box-sizing: border-box; font-size: 16px; }
+        button { background: #3182ce; color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 20px; }
+        button:active { transform: scale(0.98); background: #2b6cb0; }
+        button:disabled { background: #a0aec0; cursor: not-allowed; }
+        .total-box { background: #ebf8ff; border: 1px solid #bee3f8; padding: 15px; border-radius: 10px; margin-top: 25px; text-align: center; }
+        .total-box h3 { margin: 0; color: #2b6cb0; font-size: 18px; }
+        #teamTotal { font-size: 32px; font-weight: 800; display: block; margin-top: 5px; }
+        .history-list { margin-top: 20px; max-height: 250px; overflow-y: auto; }
+        .log-item { display: flex; justify-content: space-between; padding: 12px 5px; border-bottom: 1px solid #edf2f7; font-size: 14px; align-items: center; }
+        .log-name { font-weight: 600; color: #2d3748; }
+        .log-weight { color: #38a169; font-weight: 700; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div id="status" class="status-bar">Connecting to cloud...</div>
+    <h2>💎 Production Log</h2>
+    
+    <label>Select Your Name</label>
+    <select id="employee">
+        <option>Nicole</option><option>Tracy</option>
+        <option>Adorian</option><option>Lisa</option><option>Carmella</option>
+    </select>
+
+    <label>Pounds Processed (lbs)</label>
+    <input type="number" id="weight" step="0.1" inputmode="decimal" placeholder="0.0">
+
+    <button id="submitBtn" onclick="sendData()">Submit Entry</button>
+
+    <div class="total-box">
+        <h3>Today's Team Total</h3>
+        <span id="teamTotal">0.00</span>
+    </div>
+
+    <div class="history-list">
+        <h4 style="margin-bottom: 10px; color: #718096; font-size: 12px; text-transform: uppercase;">Recent Entries</h4>
+        <div id="liveLogs"></div>
+    </div>
+</div>
+
+<script>
+    const WEB_APP_URL = "YOUR_GOOGLE_SCRIPT_URL_HERE"; 
+
+    // Initial load and set auto-refresh every 60 seconds
+    window.onload = () => {
+        fetchData();
+        setInterval(fetchData, 60000); 
+    };
+
+    async function sendData() {
+        const btn = document.getElementById('submitBtn');
+        const name = document.getElementById('employee').value;
+        const weight = document.getElementById('weight').value;
+        
+        if(!weight || weight <= 0) return alert("Please enter a valid weight");
+        
+        btn.disabled = true;
+        btn.innerText = "Saving...";
+
+        try {
+            // Send to Google Sheets
+            await fetch(WEB_APP_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                cache: 'no-cache',
+                body: JSON.stringify({ name, weight })
+            });
+            
+            document.getElementById('weight').value = '';
+            // Brief pause to allow Google to update before fetching again
+            setTimeout(fetchData, 1500); 
+        } catch (e) {
+            alert("Connection error. Try again.");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Submit Entry";
+        }
+    }
+
+    async function fetchData() {
+        const statusEl = document.getElementById('status');
+        const totalEl = document.getElementById('teamTotal');
+        const logList = document.getElementById('liveLogs');
+
+        try {
+            // Add a random number to URL to bypass browser "caching"
+            const response = await fetch(WEB_APP_URL + "?nocache=" + Math.random());
+            const rows = await response.json();
+            
+            let dailyTotal = 0;
+            const today = new Date().toLocaleDateString();
+
+            // Reverse the rows so the newest entries show first
+            const htmlEntries = rows.slice(1).reverse().map(row => {
+                const entryDate = new Date(row[0]).toLocaleDateString();
+                if (entryDate === today) {
+                    const w = parseFloat(row[2]) || 0;
+                    dailyTotal += w;
+                    return `
+                        <div class="log-item">
+                            <span class="log-name">${row[1]}</span>
+                            <span class="log-weight">+${w.toFixed(1)} lbs</span>
+                        </div>`;
+                }
+                return '';
+            }).join('');
+
+            logList.innerHTML = htmlEntries || "<div style='text-align:center; color:#a0aec0; padding:10px;'>No entries yet today.</div>";
+            totalEl.innerText = dailyTotal.toFixed(2);
+            statusEl.innerText = "● Live (Updated: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ")";
+            statusEl.style.color = "#38a169";
+
+        } catch (e) {
+            statusEl.innerText = "⚠️ Offline / Syncing...";
+            statusEl.style.color = "#e53e3e";
+        }
+    }
+</script>
+
+</body>
+</html>
